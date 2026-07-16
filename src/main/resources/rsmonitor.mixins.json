@@ -1,0 +1,12 @@
+{
+    "required": true,
+    "minVersion": "0.8.5",
+    "package": "deliciousbread481.rsmonitor.mixin",
+    "compatibilityLevel": "JAVA_17",
+    "refmap": "rsmonitor.refmap.json",
+    "mixins": [
+        "ThreadingDetectorMixin"
+    ],
+    "client": [],
+    "server": []
+}
