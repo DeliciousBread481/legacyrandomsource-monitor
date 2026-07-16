@@ -1,9 +1,15 @@
 package deliciousbread481.rsmonitor;
 
 import com.mojang.logging.LogUtils;
-import net.minecraftforge.logging.CrashReportAnalyser;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.fml.loading.FMLLoader;
+import net.minecraftforge.forgespi.language.IModInfo;
 import org.slf4j.Logger;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -12,6 +18,8 @@ public final class ConcurrentAccessReporter {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String SERVER_THREAD = "Server thread";
 
+    private static final Map<String, IModInfo> PACKAGE_MOD_CACHE = new HashMap<>();
+    private static volatile boolean cached = false;
 
     private static final Set<String> REPORTED = ConcurrentHashMap.newKeySet();
 
@@ -34,7 +42,7 @@ public final class ConcurrentAccessReporter {
 
         String suspects;
         try {
-            suspects = CrashReportAnalyser.appendSuspectedMods(new Throwable("off-thread access"), stack);
+            suspects = resolveSuspectedMods(stack);
         } catch (Throwable t) {
             suspects = "（分析失败: " + t + "）";
         }
@@ -49,6 +57,61 @@ public final class ConcurrentAccessReporter {
             "============================================================",
             site, threadName, suspects.isBlank() ? "（未匹配到任何模组包名）" : suspects, formatStack(stack)
         );
+    }
+
+    private static String resolveSuspectedMods(StackTraceElement[] stack) {
+        cacheModList();
+
+        Set<IModInfo> suspected = new LinkedHashSet<>();
+        for (StackTraceElement e : stack) {
+            IModInfo mod = findMod(e.getClassName());
+            if (mod != null) {
+                suspected.add(mod);
+            }
+        }
+
+        if (suspected.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (IModInfo mod : suspected) {
+            sb.append("\n\t")
+              .append(mod.getDisplayName())
+              .append(" (").append(mod.getModId()).append("),")
+              .append(" Version: ").append(mod.getVersion());
+        }
+        return sb.toString();
+    }
+
+    private static void cacheModList() {
+        if (cached) {
+            return;
+        }
+        ModList modList = ModList.get();
+        ModuleLayer gameLayer = FMLLoader.getGameLayer();
+        if (modList == null) {
+            return;
+        }
+
+        modList.getMods().forEach(iModInfo -> {
+            if (!iModInfo.getModId().equals("forge") && !iModInfo.getModId().equals("minecraft")) {
+                Set<String> packages = new HashSet<>();
+                gameLayer.findModule(iModInfo.getModId())
+                        .ifPresent(module -> packages.addAll(module.getPackages()));
+                packages.forEach(s -> PACKAGE_MOD_CACHE.put(s, iModInfo));
+            }
+        });
+        cached = true;
+    }
+
+    private static IModInfo findMod(String className) {
+        for (Map.Entry<String, IModInfo> entry : PACKAGE_MOD_CACHE.entrySet()) {
+            if (className.startsWith(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     private static String topFrames(StackTraceElement[] stack, int n) {

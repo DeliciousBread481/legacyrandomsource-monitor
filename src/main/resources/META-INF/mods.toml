@@ -24,4 +24,4 @@ config="${mod_id}.mixins.json"
     mandatory=true
     versionRange="${minecraft_version_range}"
     ordering="NONE"
-    side="BOTH"*
+    side="BOTH"
